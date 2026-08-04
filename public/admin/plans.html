@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Planes</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+ <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html" class="active">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3 id="formTitle">Nuevo plan</h3>
+      <form id="planForm">
+        <input type="hidden" name="editingId" id="editingId">
+        <div class="form-grid">
+          <div><label>Nombre *</label><input name="name" required></div>
+          <div>
+            <label>Slug (para que salga en home/index.html)</label>
+            <input name="slug" placeholder="ej. esencial, profesional">
+            <span class="hint">Sin slug, el plan no aparece en la página pública de precios — solo queda disponible para asignarlo a mano desde Licencias.</span>
+          </div>
+          <div><label>Precio *</label><input name="price" type="number" step="0.01" required></div>
+          <div><label>Moneda</label><input name="currency" value="USD"></div>
+          <div><label>Ciclo</label>
+            <select name="billing_cycle">
+              <option value="monthly">Mensual</option>
+              <option value="yearly">Anual</option>
+            </select>
+          </div>
+          <div><label>Máx. sedes</label><input name="max_sites" type="number" value="1"></div>
+          <div><label>Máx. usuarios</label><input name="max_users" type="number" value="5"></div>
+          <div><label>Máx. vehículos</label><input name="max_vehicles" type="number" value="50"></div>
+        </div>
+        <div style="margin-bottom:0.75rem"><label>Descripción</label><textarea name="description" rows="2"></textarea></div>
+        <div style="margin-bottom:0.75rem">
+          <label>Qué incluye (una línea por característica)</label>
+          <textarea name="features" rows="5" placeholder="Todo lo de Esencial, más:&#10;Hasta 10 usuarios&#10;2 sucursales"></textarea>
+          <span class="hint">Se muestra como lista con check en el selector de planes del portal de cuenta. El nombre, la descripción y esta lista se traducen automáticamente al inglés al guardar (visitantes en inglés ven la traducción; si el servicio de traducción no responde, se queda en español).</span>
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Crear plan</button>
+        <button class="btn secondary" type="button" id="cancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="formError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Planes</h3>
+      <table>
+        <thead><tr><th>Nombre</th><th>Slug</th><th>Precio</th><th>Ciclo</th><th>Límites</th><th></th></tr></thead>
+        <tbody id="plansBody"><tr><td colspan="6">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    let plansCache = [];
+
+    async function loadPlans() {
+      const { plans } = await apiFetch('/plans');
+      plansCache = plans;
+      const body = document.getElementById('plansBody');
+      if (!plans.length) {
+        body.innerHTML = '<tr><td colspan="6" class="hint">Sin planes todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = plans.map(p => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.slug ? `<code>${p.slug}</code>` : '<span class="hint">— no aparece en precios —</span>'}</td>
+          <td>${fmtMoney(p.price, p.currency)}</td>
+          <td>${p.billing_cycle === 'yearly' ? 'Anual' : 'Mensual'}</td>
+          <td>${p.max_sites || 0} sedes · ${p.max_users} usuarios / ${p.max_vehicles} vehículos</td>
+          <td>
+            <a href="#" onclick="editPlan('${p._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="deletePlan('${p._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editPlan(id) {
+      const p = plansCache.find(x => x._id === id);
+      if (!p) return;
+      const form = document.getElementById('planForm');
+      form.editingId.value = id;
+      form.name.value = p.name || '';
+      form.slug.value = p.slug || '';
+      form.price.value = p.price;
+      form.currency.value = p.currency || 'USD';
+      form.billing_cycle.value = p.billing_cycle || 'monthly';
+      form.max_sites.value = p.max_sites || 1;
+      form.max_users.value = p.max_users;
+      form.max_vehicles.value = p.max_vehicles;
+      form.description.value = p.description || '';
+      form.features.value = (p.features || []).join('\n');
+      document.getElementById('formTitle').textContent = 'Editar plan';
+      document.getElementById('submitBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetPlanForm() {
+      const form = document.getElementById('planForm');
+      form.reset();
+      form.editingId.value = '';
+      document.getElementById('formTitle').textContent = 'Nuevo plan';
+      document.getElementById('submitBtn').textContent = 'Crear plan';
+      document.getElementById('cancelEdit').style.display = 'none';
+    }
+    document.getElementById('cancelEdit').addEventListener('click', resetPlanForm);
+
+    async function deletePlan(id) {
+      if (!confirm('¿Eliminar este plan?')) return;
+      try {
+        await apiFetch(`/plans/${id}`, { method: 'DELETE' });
+        loadPlans();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('planForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('formError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      payload.price = parseFloat(payload.price);
+      payload.max_sites = parseInt(payload.max_sites, 10);
+      payload.max_users = parseInt(payload.max_users, 10);
+      payload.max_vehicles = parseInt(payload.max_vehicles, 10);
+      payload.features = (payload.features || '').split('\n').map(s => s.trim()).filter(Boolean);
+      const submitBtn = document.getElementById('submitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/plans/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/plans', { method: 'POST', body: JSON.stringify(payload) }));
+        resetPlanForm();
+        loadPlans();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession().then(loadPlans).catch(err => console.error(err));
+  </script>
+</body>
+</html>

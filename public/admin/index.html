@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Login</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="card login-card">
+      <img src="logo.svg" alt="Autonexo Billing" class="login-logo">
+       <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+      <form id="loginForm">
+        <div class="form-grid" style="grid-template-columns: 1fr;">
+          <div>
+            <label for="username">Usuario</label>
+            <input id="username" name="username" required autofocus>
+          </div>
+          <div>
+            <label for="password">Contraseña</label>
+            <input id="password" name="password" type="password" required>
+          </div>
+        </div>
+        <button class="btn" type="submit" style="width:100%">Iniciar sesión</button>
+        <div class="error-msg" id="loginError"></div>
+      </form>
+
+      <form id="twoFaForm" style="display:none;">
+        <div class="form-grid" style="grid-template-columns: 1fr;">
+          <div>
+            <label for="twoFaCode">Código de tu app autenticadora</label>
+            <input id="twoFaCode" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
+          </div>
+        </div>
+        <button class="btn" type="submit" style="width:100%">Verificar</button>
+        <div class="error-msg" id="twoFaError"></div>
+      </form>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    let pendingToken = null;
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('loginError');
+      errorEl.textContent = '';
+      try {
+        const data = await apiFetch('/admin/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+        if (data.requires_2fa) {
+          pendingToken = data.pending_token;
+          document.getElementById('loginForm').style.display = 'none';
+          document.getElementById('twoFaForm').style.display = 'block';
+          document.getElementById('twoFaCode').focus();
+          return;
+        }
+        window.location.href = '/admin-ui/dashboard.html';
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('twoFaForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('twoFaError');
+      errorEl.textContent = '';
+      try {
+        await apiFetch('/admin/login/2fa', {
+          method: 'POST',
+          body: JSON.stringify({ pending_token: pendingToken, code: document.getElementById('twoFaCode').value.trim() }),
+        });
+        window.location.href = '/admin-ui/dashboard.html';
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

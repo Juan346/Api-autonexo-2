@@ -1,0 +1,109 @@
+:root {
+  --primary: #f97316;
+  --bg: #0f1115;
+  --card: #171a21;
+  --border: #262b36;
+  --text: #e5e7eb;
+  --muted: #9aa1ad;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #eab308;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a { color: var(--primary); }
+
+.admin-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.admin-nav .brand { font-weight: 700; color: var(--primary); }
+.admin-nav a { text-decoration: none; color: var(--muted); font-size: 0.9rem; }
+.admin-nav a.active, .admin-nav a:hover { color: var(--text); }
+.admin-nav .spacer { flex: 1; }
+
+.admin-container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+.stat-card .label { color: var(--muted); font-size: 0.8rem; }
+.stat-card .value { font-size: 1.6rem; font-weight: 700; margin-top: 0.25rem; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 600; }
+
+.badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.badge.active, .badge.paid { background: rgba(34,197,94,.15); color: var(--success); }
+.badge.pending { background: rgba(234,179,8,.15); color: var(--warning); }
+.badge.suspended, .badge.overdue, .badge.cancelled, .badge.expired { background: rgba(239,68,68,.15); color: var(--danger); }
+.badge.blocked { background: rgba(139,92,246,.18); color: #a78bfa; }
+.badge.new { background: rgba(59,130,246,.15); color: #3b82f6; }
+.badge.read, .badge.archived { background: rgba(148,163,184,.18); color: #64748b; }
+.badge.published, .badge.operational, .badge.resolved { background: rgba(34,197,94,.15); color: var(--success); }
+.badge.draft, .badge.investigating { background: rgba(148,163,184,.18); color: #64748b; }
+.badge.degraded, .badge.monitoring { background: rgba(234,179,8,.15); color: var(--warning); }
+.badge.outage { background: rgba(239,68,68,.15); color: var(--danger); }
+.badge.identified { background: rgba(59,130,246,.15); color: #3b82f6; }
+
+.btn {
+  display: inline-block;
+  background: var(--primary);
+  color: #111;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input, select, textarea {
+  background: #0b0d11;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+.form-grid label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+
+.error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 0.5rem; }
+.hint { color: var(--muted); font-size: 0.8rem; }
+
+.login-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-card { width: 320px; }
+.login-card h1 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--primary); }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: none; align-items: center; justify-content: center; z-index: 50;
+}
+.modal-backdrop.open { display: flex; }
+.modal { width: 360px; }

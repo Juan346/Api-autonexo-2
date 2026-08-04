@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Contacto</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html" class="active">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <h3 style="margin:0;">Mensajes del formulario de contacto</h3>
+        <select id="statusFilter" style="width:auto;">
+          <option value="">Todos</option>
+          <option value="new">Nuevos</option>
+          <option value="read">Leídos</option>
+          <option value="archived">Archivados</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Taller</th><th>Motivo</th><th>Mensaje</th><th>Estado</th><th>Recibido</th><th></th></tr></thead>
+        <tbody id="messagesBody"><tr><td colspan="8">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    const REASON_LABELS = { sales: 'Ventas', support: 'Soporte', press: 'Prensa', plan_request: 'Solicitud de plan', other: 'Otro' };
+    let messagesCache = [];
+
+    async function loadMessages() {
+      const status = document.getElementById('statusFilter').value;
+      const qs = status ? `?status=${status}` : '';
+      const { messages } = await apiFetch('/contact' + qs);
+      messagesCache = messages;
+      const body = document.getElementById('messagesBody');
+      if (!messages.length) {
+        body.innerHTML = '<tr><td colspan="8" class="hint">Sin mensajes todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = messages.map(m => `
+        <tr>
+          <td>${m.name}</td>
+          <td><a href="mailto:${m.email}">${m.email}</a></td>
+          <td>${m.workshop || '—'}</td>
+          <td>${REASON_LABELS[m.reason] || m.reason}</td>
+          <td style="max-width:280px; white-space:pre-wrap;">${m.message}</td>
+          <td>${statusBadge(m.status)}</td>
+          <td>${fmtDate(m.created_at)}</td>
+          <td>
+            ${m.status !== 'read' ? `<a href="#" onclick="setStatus('${m._id}','read'); return false;">Marcar leído</a> · ` : ''}
+            ${m.status !== 'archived' ? `<a href="#" onclick="setStatus('${m._id}','archived'); return false;">Archivar</a> · ` : ''}
+            <a href="#" onclick="deleteMessage('${m._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('statusFilter').addEventListener('change', () => loadMessages().catch(err => console.error(err)));
+
+    async function setStatus(id, status) {
+      try {
+        await apiFetch(`/contact/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        loadMessages();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteMessage(id) {
+      if (!confirm('¿Eliminar este mensaje? Esta acción no se puede deshacer.')) return;
+      try {
+        await apiFetch(`/contact/${id}`, { method: 'DELETE' });
+        loadMessages();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    requireAdminSession().then(loadMessages).catch(err => console.error(err));
+  </script>
+</body>
+</html>

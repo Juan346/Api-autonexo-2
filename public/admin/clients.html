@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Clientes</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+ <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html" class="active">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3 id="formTitle">Nuevo cliente (taller)</h3>
+      <form id="clientForm">
+        <input type="hidden" name="editingId" id="editingId">
+        <div class="form-grid">
+          <div><label>Nombre del taller *</label><input name="name" required></div>
+          <div><label>Nombre de contacto</label><input name="contact_name"></div>
+          <div><label>Email</label><input name="email" type="email"></div>
+          <div><label>Teléfono</label><input name="phone"></div>
+          <div><label>Dirección</label><input name="address"></div>
+        </div>
+        <div style="margin-bottom:0.75rem"><label>Notas</label><textarea name="notes" rows="2"></textarea></div>
+        <button class="btn" type="submit" id="submitBtn">Crear cliente</button>
+        <button class="btn secondary" type="button" id="cancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="formError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Clientes</h3>
+      <table>
+        <thead><tr><th>Nombre</th><th>Contacto</th><th>Email</th><th>Interés en plan</th><th>Creado</th><th></th></tr></thead>
+        <tbody id="clientsBody"><tr><td colspan="6">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    let clientsCache = [];
+
+    async function loadClients() {
+      const { clients } = await apiFetch('/clients');
+      clientsCache = clients;
+      const body = document.getElementById('clientsBody');
+      if (!clients.length) {
+        body.innerHTML = '<tr><td colspan="6" class="hint">Sin clientes todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = clients.map(c => `
+        <tr>
+          <td>${c.name}</td>
+          <td>${c.contact_name || '—'}</td>
+          <td>${c.email || '—'}</td>
+          <td>${c.requested_plan ? `${c.requested_plan} (${fmtDate(c.requested_plan_at)})` : '—'}</td>
+          <td>${fmtDate(c.created_at)}</td>
+          <td>
+            <a href="invoices.html?client=${c._id}">Facturas</a> ·
+            <a href="licenses.html?client=${c._id}">Licencia</a> ·
+            <a href="#" onclick="editClient('${c._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="deleteClient('${c._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editClient(id) {
+      const c = clientsCache.find(x => x._id === id);
+      if (!c) return;
+      const form = document.getElementById('clientForm');
+      form.editingId.value = id;
+      form.name.value = c.name || '';
+      form.contact_name.value = c.contact_name || '';
+      form.email.value = c.email || '';
+      form.phone.value = c.phone || '';
+      form.address.value = c.address || '';
+      form.notes.value = c.notes || '';
+      document.getElementById('formTitle').textContent = 'Editar cliente';
+      document.getElementById('submitBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetClientForm() {
+      const form = document.getElementById('clientForm');
+      form.reset();
+      form.editingId.value = '';
+      document.getElementById('formTitle').textContent = 'Nuevo cliente (taller)';
+      document.getElementById('submitBtn').textContent = 'Crear cliente';
+      document.getElementById('cancelEdit').style.display = 'none';
+    }
+    document.getElementById('cancelEdit').addEventListener('click', resetClientForm);
+
+    async function deleteClient(id) {
+      if (!confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.')) return;
+      try {
+        await apiFetch(`/clients/${id}`, { method: 'DELETE' });
+        loadClients();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('clientForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('formError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      const submitBtn = document.getElementById('submitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/clients/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/clients', { method: 'POST', body: JSON.stringify(payload) }));
+        resetClientForm();
+        loadClients();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession().then(loadClients).catch(err => console.error(err));
+  </script>
+</body>
+</html>

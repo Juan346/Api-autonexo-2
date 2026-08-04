@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Blog</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html" class="active">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3 id="formTitle">Nuevo post</h3>
+      <form id="postForm">
+        <input type="hidden" name="editingId" id="editingId">
+        <div class="form-grid">
+          <div><label>Título *</label><input name="title" id="titleInput" required></div>
+          <div>
+            <label>Slug</label>
+            <input name="slug" id="slugInput" placeholder="se genera solo desde el título">
+            <span class="hint">URL pública: post.html?slug=...</span>
+          </div>
+          <div><label>Etiqueta</label><input name="tag" placeholder="Producto, Guía, Actualización…" value="Actualización"></div>
+          <div><label>Minutos de lectura</label><input name="read_minutes" type="number" value="3"></div>
+          <div><label>Nombre del autor</label><input name="author_name" value="Equipo Autonexo"></div>
+          <div><label>Rol del autor</label><input name="author_role" placeholder="Diseñador de Producto"></div>
+          <div><label>Avatar del autor (URL, opcional)</label><input name="author_avatar_url" placeholder="https://…"></div>
+          <div><label>Imagen de portada (URL, opcional)</label><input name="cover_image_url" placeholder="https://…"></div>
+        </div>
+        <div style="margin-bottom:0.75rem"><label>Extracto (resumen corto para la tarjeta)</label><textarea name="excerpt" rows="2"></textarea></div>
+        <div style="margin-bottom:0.75rem">
+          <label>Contenido (HTML)</label>
+          <textarea name="content_html" rows="10" placeholder="&lt;p&gt;Primer párrafo…&lt;/p&gt;"></textarea>
+          <span class="hint">Se inserta tal cual en la página del post — párrafos en &lt;p&gt;, nada de Markdown.</span>
+        </div>
+        <div class="form-grid">
+          <div><label>Estado</label>
+            <select name="status">
+              <option value="draft">Borrador (no visible en el sitio)</option>
+              <option value="published">Publicado</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Crear post</button>
+        <button class="btn secondary" type="button" id="cancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="formError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Posts</h3>
+      <table>
+        <thead><tr><th>Título</th><th>Slug</th><th>Etiqueta</th><th>Estado</th><th>Publicado</th><th></th></tr></thead>
+        <tbody id="postsBody"><tr><td colspan="6">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    let postsCache = [];
+    let slugTouchedByUser = false;
+
+    // Auto-genera el slug desde el título mientras el admin no haya escrito
+    // uno a mano — mismo criterio que el backend usa si el slug llega vacío,
+    // solo que acá se ve en vivo antes de enviar el formulario.
+    var DIACRITICS_RE = new RegExp('[' + String.fromCharCode(0x0300) + '-' + String.fromCharCode(0x036f) + ']', 'g');
+    function slugify(text) {
+      return String(text || '')
+        .trim().toLowerCase()
+        .normalize('NFD').replace(DIACRITICS_RE, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+    document.getElementById('slugInput').addEventListener('input', () => { slugTouchedByUser = true; });
+    document.getElementById('titleInput').addEventListener('input', (e) => {
+      if (!slugTouchedByUser) document.getElementById('slugInput').value = slugify(e.target.value);
+    });
+
+    async function loadPosts() {
+      const { posts } = await apiFetch('/blog/admin/list');
+      postsCache = posts;
+      const body = document.getElementById('postsBody');
+      if (!posts.length) {
+        body.innerHTML = '<tr><td colspan="6" class="hint">Sin posts todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = posts.map(p => `
+        <tr>
+          <td>${p.title}</td>
+          <td><code>${p.slug}</code></td>
+          <td>${p.tag || '—'}</td>
+          <td>${statusBadge(p.status)}</td>
+          <td>${p.published_at ? fmtDate(p.published_at) : '—'}</td>
+          <td>
+            <a href="#" onclick="editPost('${p._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="deletePost('${p._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editPost(id) {
+      const p = postsCache.find(x => x._id === id);
+      if (!p) return;
+      const form = document.getElementById('postForm');
+      form.editingId.value = id;
+      form.title.value = p.title || '';
+      form.slug.value = p.slug || '';
+      slugTouchedByUser = true;
+      form.tag.value = p.tag || '';
+      form.read_minutes.value = p.read_minutes || 3;
+      form.author_name.value = p.author_name || '';
+      form.author_role.value = p.author_role || '';
+      form.author_avatar_url.value = p.author_avatar_url || '';
+      form.cover_image_url.value = p.cover_image_url || '';
+      form.excerpt.value = p.excerpt || '';
+      form.content_html.value = p.content_html || '';
+      form.status.value = p.status || 'draft';
+      document.getElementById('formTitle').textContent = 'Editar post';
+      document.getElementById('submitBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetPostForm() {
+      const form = document.getElementById('postForm');
+      form.reset();
+      form.editingId.value = '';
+      form.author_name.value = 'Equipo Autonexo';
+      form.tag.value = 'Actualización';
+      form.read_minutes.value = 3;
+      slugTouchedByUser = false;
+      document.getElementById('formTitle').textContent = 'Nuevo post';
+      document.getElementById('submitBtn').textContent = 'Crear post';
+      document.getElementById('cancelEdit').style.display = 'none';
+    }
+    document.getElementById('cancelEdit').addEventListener('click', resetPostForm);
+
+    async function deletePost(id) {
+      if (!confirm('¿Eliminar este post? Esta acción no se puede deshacer.')) return;
+      try {
+        await apiFetch(`/blog/${id}`, { method: 'DELETE' });
+        loadPosts();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('postForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('formError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      payload.read_minutes = parseInt(payload.read_minutes, 10) || 3;
+      const submitBtn = document.getElementById('submitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/blog/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/blog', { method: 'POST', body: JSON.stringify(payload) }));
+        resetPostForm();
+        loadPosts();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession().then(loadPosts).catch(err => console.error(err));
+  </script>
+</body>
+</html>

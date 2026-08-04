@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Seguridad</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <span class="brand">Autonexo Billing</span>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html" class="active">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3>Autenticación de dos factores (2FA)</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">Protege el login del panel con un código de 6 dígitos de una app autenticadora (Google Authenticator, Authy, etc.), además de tu usuario y contraseña.</p>
+
+      <div id="twoFaDisabledState">
+        <p style="margin-bottom:0.75rem;"><span class="badge pending">Desactivado</span></p>
+        <button class="btn" type="button" id="startSetupBtn">Configurar 2FA</button>
+      </div>
+
+      <div id="twoFaSetupState" style="display:none;">
+        <p class="hint" style="margin-bottom:0.5rem;">Escanea este código con tu app autenticadora, o ingresa el secreto a mano.</p>
+        <img id="qrImage" src="" alt="Código QR para configurar 2FA" style="display:block; margin-bottom:0.75rem; border-radius:6px; border:1px solid var(--border);">
+        <p style="font-family:monospace; font-size:0.85rem; word-break:break-all; margin-bottom:0.75rem;" id="manualSecret"></p>
+        <form id="confirmForm">
+          <div class="form-grid" style="grid-template-columns: 1fr;">
+            <div><label>Código de 6 dígitos</label><input name="code" id="confirmCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></div>
+          </div>
+          <button class="btn" type="submit" id="confirmBtn">Confirmar y activar</button>
+          <button class="btn secondary" type="button" id="cancelSetupBtn">Cancelar</button>
+          <div class="error-msg" id="confirmError"></div>
+        </form>
+      </div>
+
+      <div id="twoFaEnabledState" style="display:none;">
+        <p style="margin-bottom:0.75rem;"><span class="badge active">Activado</span></p>
+        <form id="disableForm">
+          <div class="form-grid" style="grid-template-columns: 1fr;">
+            <div><label>Código de 6 dígitos (para confirmar que sos vos)</label><input name="code" id="disableCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></div>
+          </div>
+          <button class="btn secondary" type="submit" id="disableBtn">Desactivar 2FA</button>
+          <div class="error-msg" id="disableError"></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Tu IP actual</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">Esta es la IP con la que este navegador llega al servidor. Si vas a activar la restricción de abajo, asegúrate de agregarla primero con alcance "Panel admin" — si no, te vas a bloquear a ti mismo.</p>
+      <p style="font-size:1.1rem; font-weight:700;" id="myIpDisplay">—</p>
+      <button class="btn" type="button" id="addMyIpBtn">+ Agregar mi IP (alcance: Panel admin)</button>
+      <div class="error-msg" id="myIpError"></div>
+    </div>
+
+    <div class="card">
+      <h3>Restricción de acceso por IP</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">
+        Cuando está activada, solo se aceptan peticiones desde las IPs/rangos que agregues abajo, según su alcance.
+        Por defecto está DESACTIVADA (nada cambia hasta que la actives).
+      </p>
+      <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+        <input type="checkbox" id="ipToggle" style="width:auto;">
+        <span>Restringir acceso por IP</span>
+      </label>
+      <div class="error-msg" id="toggleError"></div>
+    </div>
+
+    <div class="card">
+      <h3>Orígenes CORS permitidos</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">Dominios desde los que un navegador puede llamar a esta API (no aplica a llamadas servidor-a-servidor, como las que hace cada app de taller a <code>/validate</code>).</p>
+      <form id="originForm">
+        <div class="form-grid">
+          <div><label>Dominio (ej. https://midominio.com)</label><input name="value" id="originValue" required></div>
+          <div><label>Etiqueta</label><input name="label" id="originLabel" placeholder="Opcional"></div>
+        </div>
+        <button class="btn" type="submit" id="originSubmitBtn">Agregar origen</button>
+        <div class="error-msg" id="originError"></div>
+      </form>
+      <table style="margin-top:1rem;">
+        <thead><tr><th>Dominio</th><th>Etiqueta</th><th></th></tr></thead>
+        <tbody id="originsBody"><tr><td colspan="3">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>IPs / servidores permitidos</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">IP exacta (ej. 203.0.113.5) o rango CIDR (ej. 203.0.113.0/24). Solo IPv4.</p>
+      <form id="ipForm">
+        <div class="form-grid">
+          <div><label>IP o CIDR</label><input name="value" id="ipValue" required></div>
+          <div>
+            <label>Alcance</label>
+            <select name="scope" id="ipScope">
+              <option value="admin">Panel admin</option>
+              <option value="validate">Validación de licencias (apps de talleres)</option>
+              <option value="all">Ambos</option>
+            </select>
+          </div>
+          <div><label>Etiqueta</label><input name="label" id="ipLabel" placeholder="Ej. Servidor Taller X"></div>
+        </div>
+        <p class="error-msg" id="scopeWarning" style="display:none;">
+          Ojo: este alcance afecta a las apps de los talleres — si te olvidas la IP de un servidor, su próxima verificación automática puede marcar su licencia como inválida.
+        </p>
+        <button class="btn" type="submit" id="ipSubmitBtn">Agregar IP</button>
+        <div class="error-msg" id="ipError"></div>
+      </form>
+      <table style="margin-top:1rem;">
+        <thead><tr><th>IP / CIDR</th><th>Alcance</th><th>Etiqueta</th><th></th></tr></thead>
+        <tbody id="ipsBody"><tr><td colspan="4">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Comandos ufw sugeridos (referencia)</h3>
+      <p class="hint" style="margin-bottom:0.75rem;">
+        Esto es solo texto de referencia para que TÚ los ejecutes manualmente en el servidor si quieres una capa extra a nivel de sistema operativo — el panel nunca ejecuta nada por ti.
+      </p>
+      <pre id="ufwCommands" style="background:#0b0d11; border:1px solid var(--border); border-radius:6px; padding:0.75rem; font-size:0.8rem; overflow-x:auto; white-space:pre-wrap;">—</pre>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    const SCOPE_LABELS = { admin: 'Panel admin', validate: 'Validación de licencias', all: 'Ambos' };
+    let myIp = '';
+    let ipRulesCache = [];
+
+    function renderUfwCommands() {
+      const port = 4000;
+      const lines = [
+        '# Solo de referencia — ejecutar manualmente en el servidor, nunca desde este panel.',
+        'sudo ufw allow OpenSSH',
+        'sudo ufw default deny incoming',
+        'sudo ufw default allow outgoing',
+      ];
+      if (ipRulesCache.length) {
+        ipRulesCache.forEach((r) => {
+          lines.push(`sudo ufw allow from ${r.value} to any port ${port} proto tcp  # ${r.label || SCOPE_LABELS[r.scope] || r.scope}`);
+        });
+      } else {
+        lines.push(`sudo ufw allow from <IP_DEL_SERVIDOR> to any port ${port} proto tcp`);
+      }
+      lines.push('sudo ufw enable');
+      document.getElementById('ufwCommands').textContent = lines.join('\n');
+    }
+
+    async function load2faStatus() {
+      const { enabled } = await apiFetch('/security/2fa/status');
+      document.getElementById('twoFaDisabledState').style.display = enabled ? 'none' : 'block';
+      document.getElementById('twoFaSetupState').style.display = 'none';
+      document.getElementById('twoFaEnabledState').style.display = enabled ? 'block' : 'none';
+    }
+
+    document.getElementById('startSetupBtn').addEventListener('click', async () => {
+      const data = await apiFetch('/security/2fa/setup', { method: 'POST' });
+      document.getElementById('qrImage').src = data.qr_url;
+      document.getElementById('manualSecret').textContent = data.secret;
+      document.getElementById('twoFaDisabledState').style.display = 'none';
+      document.getElementById('twoFaSetupState').style.display = 'block';
+    });
+
+    document.getElementById('cancelSetupBtn').addEventListener('click', () => {
+      document.getElementById('twoFaSetupState').style.display = 'none';
+      document.getElementById('twoFaDisabledState').style.display = 'block';
+    });
+
+    document.getElementById('confirmForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('confirmError');
+      errorEl.textContent = '';
+      const submitBtn = document.getElementById('confirmBtn');
+      try {
+        await withBusy(submitBtn, () => apiFetch('/security/2fa/confirm', {
+          method: 'POST',
+          body: JSON.stringify({ code: document.getElementById('confirmCode').value.trim() }),
+        }));
+        document.getElementById('confirmForm').reset();
+        load2faStatus();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('disableForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('disableError');
+      errorEl.textContent = '';
+      const submitBtn = document.getElementById('disableBtn');
+      try {
+        await withBusy(submitBtn, () => apiFetch('/security/2fa/disable', {
+          method: 'POST',
+          body: JSON.stringify({ code: document.getElementById('disableCode').value.trim() }),
+        }));
+        document.getElementById('disableForm').reset();
+        load2faStatus();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    async function loadSettings() {
+      const data = await apiFetch('/security/settings');
+      myIp = data.my_ip;
+      document.getElementById('myIpDisplay').textContent = myIp;
+      document.getElementById('ipToggle').checked = !!data.ip_allowlist_enabled;
+    }
+
+    document.getElementById('addMyIpBtn').addEventListener('click', async () => {
+      const errorEl = document.getElementById('myIpError');
+      errorEl.textContent = '';
+      try {
+        await apiFetch('/security/rules', { method: 'POST', body: JSON.stringify({ type: 'ip', value: myIp, scope: 'admin', label: 'Mi IP' }) });
+        loadIpRules();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('ipToggle').addEventListener('change', async (e) => {
+      const errorEl = document.getElementById('toggleError');
+      errorEl.textContent = '';
+      const desired = e.target.checked;
+      try {
+        await apiFetch('/security/settings', { method: 'PUT', body: JSON.stringify({ ip_allowlist_enabled: desired }) });
+      } catch (err) {
+        e.target.checked = !desired;
+        errorEl.textContent = err.message;
+      }
+    });
+
+    async function loadOrigins() {
+      const { rules } = await apiFetch('/security/rules?type=origin');
+      const body = document.getElementById('originsBody');
+      if (!rules.length) {
+        body.innerHTML = '<tr><td colspan="3" class="hint">Sin orígenes configurados — CORS usa el comportamiento por defecto.</td></tr>';
+        return;
+      }
+      body.innerHTML = rules.map(r => `
+        <tr>
+          <td>${r.value}</td>
+          <td>${r.label || '—'}</td>
+          <td><a href="#" onclick="deleteRule('${r._id}', loadOrigins); return false;">Eliminar</a></td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadIpRules() {
+      const { rules } = await apiFetch('/security/rules?type=ip');
+      ipRulesCache = rules;
+      const body = document.getElementById('ipsBody');
+      if (!rules.length) {
+        body.innerHTML = '<tr><td colspan="4" class="hint">Sin IPs configuradas todavía.</td></tr>';
+      } else {
+        body.innerHTML = rules.map(r => `
+          <tr>
+            <td>${r.value}</td>
+            <td>${SCOPE_LABELS[r.scope] || r.scope}</td>
+            <td>${r.label || '—'}</td>
+            <td><a href="#" onclick="deleteRule('${r._id}', loadIpRules); return false;">Eliminar</a></td>
+          </tr>
+        `).join('');
+      }
+      renderUfwCommands();
+    }
+
+    async function deleteRule(id, reload) {
+      if (!confirm('¿Eliminar esta regla?')) return;
+      try {
+        await apiFetch(`/security/rules/${id}`, { method: 'DELETE' });
+        reload();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('ipScope').addEventListener('change', (e) => {
+      document.getElementById('scopeWarning').style.display = e.target.value === 'admin' ? 'none' : 'block';
+    });
+
+    document.getElementById('originForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('originError');
+      errorEl.textContent = '';
+      const submitBtn = document.getElementById('originSubmitBtn');
+      try {
+        await withBusy(submitBtn, () => apiFetch('/security/rules', {
+          method: 'POST',
+          body: JSON.stringify({ type: 'origin', value: document.getElementById('originValue').value.trim(), label: document.getElementById('originLabel').value.trim() }),
+        }));
+        e.target.reset();
+        loadOrigins();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('ipForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('ipError');
+      errorEl.textContent = '';
+      const submitBtn = document.getElementById('ipSubmitBtn');
+      try {
+        await withBusy(submitBtn, () => apiFetch('/security/rules', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'ip',
+            value: document.getElementById('ipValue').value.trim(),
+            scope: document.getElementById('ipScope').value,
+            label: document.getElementById('ipLabel').value.trim(),
+          }),
+        }));
+        e.target.reset();
+        document.getElementById('scopeWarning').style.display = 'none';
+        loadIpRules();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession()
+      .then(() => Promise.all([loadSettings(), loadOrigins(), loadIpRules(), load2faStatus()]))
+      .catch(err => console.error(err));
+  </script>
+</body>
+</html>

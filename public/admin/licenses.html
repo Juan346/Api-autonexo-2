@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Licencias</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+ <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html" class="active">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3 id="formTitle">Nueva licencia</h3>
+      <form id="licenseForm">
+        <input type="hidden" name="editingId" id="editingId">
+        <div class="form-grid">
+          <div>
+            <label>Cliente</label>
+            <select name="client" id="clientSelect"><option value="">— Sin cliente —</option></select>
+          </div>
+          <div>
+            <label>Key *</label>
+            <div style="display:flex; gap:0.4rem;">
+              <input name="key" id="keyInput" required>
+              <button class="btn secondary" type="button" id="genKeyBtn" style="white-space:nowrap;">Generar</button>
+            </div>
+          </div>
+          <div>
+            <label>Plan (autocompleta límites y se guarda en la licencia)</label>
+            <select name="plan" id="planSelect"><option value="">— Ninguno —</option></select>
+          </div>
+          <div>
+            <label>Estado</label>
+            <select name="status" id="statusSelect">
+              <option value="active">Activa</option>
+              <option value="pending">Pendiente</option>
+              <option value="suspended">Suspendida</option>
+              <option value="blocked">Bloqueada</option>
+              <option value="expired">Expirada</option>
+            </select>
+            <span class="hint">"Suspendida" = por mora. "Bloqueada" = acción manual del equipo (moderación).</span>
+          </div>
+          <div><label>Expiración</label><input name="expiration_date" id="expirationInput" type="date"></div>
+          <div><label>Máx. sedes</label><input name="max_sites" id="maxSitesInput" type="number" value="1"></div>
+          <div><label>Máx. usuarios</label><input name="max_users" id="maxUsersInput" type="number" value="5"></div>
+          <div><label>Máx. vehículos</label><input name="max_vehicles" id="maxVehiclesInput" type="number" value="50"></div>
+          <div><label>Titular</label><input name="holder_name"></div>
+          <div><label>Empresa</label><input name="company_name"></div>
+          <div><label>Nombre del sitio</label><input name="site_name"></div>
+          <div><label>Email admin</label><input name="admin_email" type="email"></div>
+          <div><label><input type="checkbox" name="is_trial" id="isTrialCheckbox"> Es prueba gratis</label></div>
+        </div>
+        <div style="margin-bottom:0.75rem"><label>Notas</label><textarea name="notes" rows="2"></textarea></div>
+        <button class="btn" type="submit" id="submitBtn">Crear licencia</button>
+        <button class="btn secondary" type="button" id="cancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="formError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Licencias</h3>
+      <table>
+        <thead><tr><th>Cliente</th><th>Key</th><th>Plan</th><th>Estado</th><th>Expiración</th><th>Límites</th><th></th></tr></thead>
+        <tbody id="licensesBody"><tr><td colspan="7">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    const params = new URLSearchParams(window.location.search);
+    const filterClient = params.get('client');
+    let licensesCache = [];
+    let plansCache = [];
+
+    function randomKey() {
+      const groups = [];
+      for (let g = 0; g < 3; g++) {
+        const bytes = new Uint8Array(4);
+        crypto.getRandomValues(bytes);
+        groups.push(Array.from(bytes).map(b => (b % 36).toString(36)).join('').toUpperCase());
+      }
+      return `ANX-${groups.join('-')}`;
+    }
+    document.getElementById('genKeyBtn').addEventListener('click', () => {
+      document.getElementById('keyInput').value = randomKey();
+    });
+
+    document.getElementById('planSelect').addEventListener('change', (e) => {
+      const plan = plansCache.find(p => p._id === e.target.value);
+      if (!plan) return;
+      document.getElementById('maxUsersInput').value = plan.max_users;
+      document.getElementById('maxVehiclesInput').value = plan.max_vehicles;
+      document.getElementById('maxSitesInput').value = plan.max_sites || 1;
+    });
+
+    async function loadOptions() {
+      const [{ clients }, { plans }] = await Promise.all([apiFetch('/clients'), apiFetch('/plans')]);
+      plansCache = plans;
+      const clientSelect = document.getElementById('clientSelect');
+      clientSelect.innerHTML += clients.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+      if (filterClient) clientSelect.value = filterClient;
+      const planSelect = document.getElementById('planSelect');
+      planSelect.innerHTML += plans.map(p => `<option value="${p._id}">${p.name}</option>`).join('');
+    }
+
+    async function loadLicenses() {
+      const { licenses } = await apiFetch('/licenses');
+      licensesCache = licenses;
+      const filtered = filterClient ? licenses.filter(l => l.client && l.client._id === filterClient) : licenses;
+      const body = document.getElementById('licensesBody');
+      if (!filtered.length) {
+        body.innerHTML = '<tr><td colspan="7" class="hint">Sin licencias todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = filtered.map(l => `
+        <tr>
+          <td>${l.client ? l.client.name : '—'}</td>
+          <td>${l.key}</td>
+          <td>${l.plan ? l.plan.name : (l.is_trial ? 'Prueba gratis' : '—')}</td>
+          <td>${statusBadge(l.status)}</td>
+          <td>${fmtDate(l.expiration_date)}</td>
+          <td>${l.max_sites || 0} sedes · ${l.max_users || 0} usuarios / ${l.max_vehicles || 0} vehículos</td>
+          <td>
+            <a href="#" onclick="editLicense('${l._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="toggleSuspend('${l._id}'); return false;">${l.status === 'suspended' ? 'Reactivar' : 'Suspender'}</a> ·
+            <a href="#" onclick="toggleBlock('${l._id}'); return false;">${l.status === 'blocked' ? 'Desbloquear' : 'Bloquear'}</a> ·
+            <a href="#" onclick="deleteLicense('${l._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editLicense(id) {
+      const l = licensesCache.find(x => x._id === id);
+      if (!l) return;
+      const form = document.getElementById('licenseForm');
+      form.editingId.value = id;
+      form.client.value = l.client ? l.client._id : '';
+      form.key.value = l.key || '';
+      form.plan.value = l.plan ? l.plan._id : '';
+      form.is_trial.checked = !!l.is_trial;
+      form.status.value = l.status || 'active';
+      form.expiration_date.value = l.expiration_date ? l.expiration_date.substring(0, 10) : '';
+      form.max_sites.value = l.max_sites || 0;
+      form.max_users.value = l.max_users || 0;
+      form.max_vehicles.value = l.max_vehicles || 0;
+      form.holder_name.value = l.holder_name || '';
+      form.company_name.value = l.company_name || '';
+      form.site_name.value = l.site_name || '';
+      form.admin_email.value = l.admin_email || '';
+      form.notes.value = l.notes || '';
+      document.getElementById('formTitle').textContent = 'Editar licencia';
+      document.getElementById('submitBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetLicenseForm() {
+      const form = document.getElementById('licenseForm');
+      form.reset();
+      form.editingId.value = '';
+      document.getElementById('formTitle').textContent = 'Nueva licencia';
+      document.getElementById('submitBtn').textContent = 'Crear licencia';
+      document.getElementById('cancelEdit').style.display = 'none';
+    }
+    document.getElementById('cancelEdit').addEventListener('click', resetLicenseForm);
+
+    async function toggleSuspend(id) {
+      const l = licensesCache.find(x => x._id === id);
+      if (!l) return;
+      const suspending = l.status !== 'suspended';
+      try {
+        await apiFetch(`/licenses/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: suspending ? 'suspended' : 'active', valid: !suspending }),
+        });
+        loadLicenses();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // Distinto de "Suspender": suspender es un estado derivado de mora
+    // (lib/billing.js lo revierte solo si se paga la factura vencida).
+    // Bloquear es una decisión manual del equipo — moderación, no cobranza —
+    // así que solo un admin la revierte a mano, nunca automáticamente.
+    async function toggleBlock(id) {
+      const l = licensesCache.find(x => x._id === id);
+      if (!l) return;
+      const blocking = l.status !== 'blocked';
+      if (blocking && !confirm('¿Bloquear esta licencia? La instalación quedará sin acceso hasta que la desbloquees a mano.')) return;
+      try {
+        await apiFetch(`/licenses/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: blocking ? 'blocked' : 'active', valid: !blocking }),
+        });
+        loadLicenses();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteLicense(id) {
+      if (!confirm('¿Eliminar esta licencia? Esta acción no se puede deshacer.')) return;
+      try {
+        await apiFetch(`/licenses/${id}`, { method: 'DELETE' });
+        loadLicenses();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('licenseForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('formError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      if (!payload.client) delete payload.client;
+      if (!payload.plan) delete payload.plan;
+      if (!payload.expiration_date) delete payload.expiration_date;
+      payload.max_sites = parseInt(payload.max_sites, 10) || 0;
+      payload.max_users = parseInt(payload.max_users, 10) || 0;
+      payload.max_vehicles = parseInt(payload.max_vehicles, 10) || 0;
+      payload.valid = payload.status === 'active';
+      // Checkbox: FormData solo incluye is_trial cuando está marcado, así que
+      // hay que leerlo del form directamente para poder desmarcarlo también.
+      payload.is_trial = e.target.is_trial.checked;
+      const submitBtn = document.getElementById('submitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/licenses/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/licenses', { method: 'POST', body: JSON.stringify(payload) }));
+        resetLicenseForm();
+        loadLicenses();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession()
+      .then(() => loadOptions().then(loadLicenses))
+      .catch(err => console.error(err));
+  </script>
+</body>
+</html>

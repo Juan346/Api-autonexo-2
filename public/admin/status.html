@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Estado</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html" class="active">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+
+    <div class="card">
+      <h3>Componentes</h3>
+      <p class="hint" style="margin-top:-0.4rem; margin-bottom:0.75rem;">Esto es lo que ve el visitante en /estado.html. El banner general toma el peor estado entre estos componentes.</p>
+      <table>
+        <thead><tr><th>Nombre</th><th>Descripción</th><th>Estado</th><th>Orden</th><th></th></tr></thead>
+        <tbody id="componentsBody"><tr><td colspan="5">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 id="componentFormTitle">Nuevo componente</h3>
+      <form id="componentForm">
+        <input type="hidden" name="editingId" id="componentEditingId">
+        <div class="form-grid">
+          <div><label>Nombre *</label><input name="name" required></div>
+          <div><label>Descripción</label><input name="description"></div>
+          <div><label>Estado</label>
+            <select name="status">
+              <option value="operational">Operacional</option>
+              <option value="degraded">Degradado</option>
+              <option value="outage">Interrupción</option>
+            </select>
+          </div>
+          <div><label>Orden</label><input name="order" type="number" value="0"></div>
+        </div>
+        <button class="btn" type="submit" id="componentSubmitBtn">Crear componente</button>
+        <button class="btn secondary" type="button" id="componentCancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="componentFormError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Incidentes</h3>
+      <table>
+        <thead><tr><th>Título</th><th>Estado</th><th>Inicio</th><th>Resuelto</th><th></th></tr></thead>
+        <tbody id="incidentsBody"><tr><td colspan="5">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 id="incidentFormTitle">Nuevo incidente</h3>
+      <form id="incidentForm">
+        <input type="hidden" name="editingId" id="incidentEditingId">
+        <div class="form-grid">
+          <div><label>Título *</label><input name="title" required></div>
+          <div><label>Estado</label>
+            <select name="status">
+              <option value="investigating">Investigando</option>
+              <option value="identified">Identificado</option>
+              <option value="monitoring">Monitoreando</option>
+              <option value="resolved">Resuelto</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:0.75rem"><label>Descripción</label><textarea name="description" rows="3"></textarea></div>
+        <button class="btn" type="submit" id="incidentSubmitBtn">Crear incidente</button>
+        <button class="btn secondary" type="button" id="incidentCancelEdit" style="display:none">Cancelar</button>
+        <div class="error-msg" id="incidentFormError"></div>
+      </form>
+    </div>
+
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    let componentsCache = [];
+    let incidentsCache = [];
+
+    async function loadStatus() {
+      const { components, incidents } = await apiFetch('/status');
+      componentsCache = components;
+      incidentsCache = incidents;
+      renderComponents();
+      renderIncidents();
+    }
+
+    function renderComponents() {
+      const body = document.getElementById('componentsBody');
+      if (!componentsCache.length) {
+        body.innerHTML = '<tr><td colspan="5" class="hint">Sin componentes todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = componentsCache.map(c => `
+        <tr>
+          <td>${c.name}</td>
+          <td>${c.description || '—'}</td>
+          <td>${statusBadge(c.status)}</td>
+          <td>${c.order}</td>
+          <td>
+            <a href="#" onclick="editComponent('${c._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="deleteComponent('${c._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editComponent(id) {
+      const c = componentsCache.find(x => x._id === id);
+      if (!c) return;
+      const form = document.getElementById('componentForm');
+      form.editingId.value = id;
+      form.name.value = c.name || '';
+      form.description.value = c.description || '';
+      form.status.value = c.status || 'operational';
+      form.order.value = c.order || 0;
+      document.getElementById('componentFormTitle').textContent = 'Editar componente';
+      document.getElementById('componentSubmitBtn').textContent = 'Guardar cambios';
+      document.getElementById('componentCancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetComponentForm() {
+      const form = document.getElementById('componentForm');
+      form.reset();
+      form.editingId.value = '';
+      document.getElementById('componentFormTitle').textContent = 'Nuevo componente';
+      document.getElementById('componentSubmitBtn').textContent = 'Crear componente';
+      document.getElementById('componentCancelEdit').style.display = 'none';
+    }
+    document.getElementById('componentCancelEdit').addEventListener('click', resetComponentForm);
+
+    async function deleteComponent(id) {
+      if (!confirm('¿Eliminar este componente?')) return;
+      try {
+        await apiFetch(`/status/components/${id}`, { method: 'DELETE' });
+        loadStatus();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('componentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('componentFormError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      payload.order = parseInt(payload.order, 10) || 0;
+      const submitBtn = document.getElementById('componentSubmitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/status/components/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/status/components', { method: 'POST', body: JSON.stringify(payload) }));
+        resetComponentForm();
+        loadStatus();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    function renderIncidents() {
+      const body = document.getElementById('incidentsBody');
+      if (!incidentsCache.length) {
+        body.innerHTML = '<tr><td colspan="5" class="hint">Sin incidentes reportados</td></tr>';
+        return;
+      }
+      body.innerHTML = incidentsCache.map(i => `
+        <tr>
+          <td>${i.title}</td>
+          <td>${statusBadge(i.status)}</td>
+          <td>${fmtDate(i.started_at)}</td>
+          <td>${i.resolved_at ? fmtDate(i.resolved_at) : '—'}</td>
+          <td>
+            <a href="#" onclick="editIncident('${i._id}'); return false;">Editar</a> ·
+            <a href="#" onclick="deleteIncident('${i._id}'); return false;">Eliminar</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function editIncident(id) {
+      const i = incidentsCache.find(x => x._id === id);
+      if (!i) return;
+      const form = document.getElementById('incidentForm');
+      form.editingId.value = id;
+      form.title.value = i.title || '';
+      form.status.value = i.status || 'investigating';
+      form.description.value = i.description || '';
+      document.getElementById('incidentFormTitle').textContent = 'Editar incidente';
+      document.getElementById('incidentSubmitBtn').textContent = 'Guardar cambios';
+      document.getElementById('incidentCancelEdit').style.display = 'inline-block';
+      window.scrollTo(0, 0);
+    }
+
+    function resetIncidentForm() {
+      const form = document.getElementById('incidentForm');
+      form.reset();
+      form.editingId.value = '';
+      document.getElementById('incidentFormTitle').textContent = 'Nuevo incidente';
+      document.getElementById('incidentSubmitBtn').textContent = 'Crear incidente';
+      document.getElementById('incidentCancelEdit').style.display = 'none';
+    }
+    document.getElementById('incidentCancelEdit').addEventListener('click', resetIncidentForm);
+
+    async function deleteIncident(id) {
+      if (!confirm('¿Eliminar este incidente?')) return;
+      try {
+        await apiFetch(`/status/incidents/${id}`, { method: 'DELETE' });
+        loadStatus();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById('incidentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('incidentFormError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const editingId = payload.editingId;
+      delete payload.editingId;
+      const submitBtn = document.getElementById('incidentSubmitBtn');
+      try {
+        await withBusy(submitBtn, () => editingId
+          ? apiFetch(`/status/incidents/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+          : apiFetch('/status/incidents', { method: 'POST', body: JSON.stringify(payload) }));
+        resetIncidentForm();
+        loadStatus();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession().then(loadStatus).catch(err => console.error(err));
+  </script>
+</body>
+</html>

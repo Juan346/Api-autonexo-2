@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Dashboard</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html" class="active">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="error-msg" id="loadError"></div>
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="card">
+      <h3>Facturas vencidas</h3>
+      <table>
+        <thead><tr><th>Factura</th><th>Cliente</th><th>Vencimiento</th><th>Monto</th></tr></thead>
+        <tbody id="overdueBody"><tr><td colspan="4">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    async function load() {
+      const { summary } = await apiFetch('/dashboard/summary');
+      const statsGrid = document.getElementById('statsGrid');
+      statsGrid.innerHTML = `
+        <div class="stat-card"><div class="label">Clientes</div><div class="value">${summary.clients}</div></div>
+        <div class="stat-card"><div class="label">Licencias activas</div><div class="value">${summary.active_licenses}</div></div>
+        <div class="stat-card"><div class="label">Facturas pendientes</div><div class="value">${summary.pending_invoices_count}</div></div>
+        <div class="stat-card"><div class="label">Ingresos este mes</div><div class="value">${fmtMoney(summary.revenue_this_month, 'USD')}</div></div>
+      `;
+
+      const overdueBody = document.getElementById('overdueBody');
+      if (!summary.overdue_invoices.length) {
+        overdueBody.innerHTML = '<tr><td colspan="4" class="hint">Sin facturas vencidas 🎉</td></tr>';
+      } else {
+        overdueBody.innerHTML = summary.overdue_invoices.map(inv => `
+          <tr>
+            <td>${inv.invoice_number}</td>
+            <td>${inv.client ? inv.client.name : '—'}</td>
+            <td>${fmtDate(inv.due_date)}</td>
+            <td>${fmtMoney(inv.amount, inv.currency)}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    requireAdminSession()
+      .then(load)
+      .catch((err) => {
+        console.error(err);
+        document.getElementById('loadError').textContent = err.message || 'No se pudo cargar el dashboard.';
+      });
+  </script>
+</body>
+</html>

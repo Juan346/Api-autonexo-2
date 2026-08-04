@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Autonexo Billing — Facturas</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <nav class="admin-nav">
+    <img src="logo.svg" alt="Autonexo Billing" style="width: 180px;" class="nav-logo">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="clients.html">Clientes</a>
+    <a href="licenses.html">Licencias</a>
+    <a href="plans.html">Planes</a>
+    <a href="invoices.html" class="active">Facturas</a>
+    <a href="security.html">Seguridad</a>
+    <a href="contacts.html">Contacto</a>
+    <a href="blog.html">Blog</a>
+    <a href="status.html">Estado</a>
+    <span class="spacer"></span>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </nav>
+  <div class="admin-container">
+    <div class="card">
+      <h3>Nueva factura</h3>
+      <form id="invoiceForm">
+        <div class="form-grid">
+          <div>
+            <label>Cliente *</label>
+            <select name="client" id="clientSelect" required></select>
+          </div>
+          <div>
+            <label>Plan (opcional, autocompleta monto)</label>
+            <select name="plan" id="planSelect">
+              <option value="">— Monto manual —</option>
+            </select>
+          </div>
+          <div><label>Monto</label><input name="amount" id="amountInput" type="number" step="0.01"></div>
+          <div><label>Vencimiento</label><input name="due_date" type="date"></div>
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Crear factura</button>
+        <div class="error-msg" id="formError"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <h3 style="margin:0;">Facturas</h3>
+        <select id="statusFilter" style="width:auto;">
+          <option value="">Todas</option>
+          <option value="pending">Pendientes</option>
+          <option value="paid">Pagadas</option>
+          <option value="overdue">Vencidas</option>
+          <option value="cancelled">Canceladas</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Factura</th><th>Cliente</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="invoicesBody"><tr><td colspan="6">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="payModal">
+    <div class="card modal">
+      <h3>Marcar como pagada</h3>
+      <form id="payForm">
+        <div style="margin-bottom:0.75rem">
+          <label>Método de pago</label>
+          <input name="payment_method" placeholder="Transferencia, efectivo, etc.">
+        </div>
+        <div style="margin-bottom:0.75rem">
+          <label>Notas</label>
+          <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button class="btn" type="submit">Confirmar pago</button>
+        <button class="btn secondary" type="button" id="cancelPay">Cancelar</button>
+        <div class="error-msg" id="payError"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    document.getElementById('logoutLink').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    const params = new URLSearchParams(window.location.search);
+    const filterClient = params.get('client');
+    let plansCache = [];
+    let payingInvoiceId = null;
+
+    async function loadOptions() {
+      const [{ clients }, { plans }] = await Promise.all([apiFetch('/clients'), apiFetch('/plans')]);
+      plansCache = plans;
+      const clientSelect = document.getElementById('clientSelect');
+      clientSelect.innerHTML = clients.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+      if (filterClient) clientSelect.value = filterClient;
+
+      const planSelect = document.getElementById('planSelect');
+      planSelect.innerHTML += plans.map(p => `<option value="${p._id}">${p.name} (${fmtMoney(p.price, p.currency)})</option>`).join('');
+    }
+
+    document.getElementById('planSelect').addEventListener('change', (e) => {
+      const plan = plansCache.find(p => p._id === e.target.value);
+      document.getElementById('amountInput').value = plan ? plan.price : '';
+    });
+
+    async function loadInvoices() {
+      const qsParams = [];
+      if (filterClient) qsParams.push(`client=${filterClient}`);
+      const statusFilter = document.getElementById('statusFilter').value;
+      if (statusFilter) qsParams.push(`status=${statusFilter}`);
+      const qs = qsParams.length ? `?${qsParams.join('&')}` : '';
+      const { invoices } = await apiFetch('/invoices' + qs);
+      const body = document.getElementById('invoicesBody');
+      if (!invoices.length) {
+        body.innerHTML = '<tr><td colspan="6" class="hint">Sin facturas todavía</td></tr>';
+        return;
+      }
+      body.innerHTML = invoices.map(inv => `
+        <tr>
+          <td>${inv.invoice_number}</td>
+          <td>${inv.client ? inv.client.name : '—'}</td>
+          <td>${fmtMoney(inv.amount, inv.currency)}</td>
+          <td>${fmtDate(inv.due_date)}</td>
+          <td>${statusBadge(inv.status)}</td>
+          <td>
+            ${inv.status === 'paid' || inv.status === 'cancelled' ? '' : `
+              <button class="btn" data-id="${inv._id}" onclick="openPayModal('${inv._id}')">Marcar pagada</button>
+              <button class="btn secondary" onclick="cancelInvoice('${inv._id}')">Cancelar</button>
+            `}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('statusFilter').addEventListener('change', () => loadInvoices().catch(err => console.error(err)));
+
+    async function cancelInvoice(id) {
+      if (!confirm('¿Cancelar esta factura?')) return;
+      try {
+        await apiFetch(`/invoices/${id}/cancel`, { method: 'POST' });
+        loadInvoices();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function openPayModal(id) {
+      payingInvoiceId = id;
+      document.getElementById('payModal').classList.add('open');
+    }
+    document.getElementById('cancelPay').addEventListener('click', () => {
+      document.getElementById('payModal').classList.remove('open');
+    });
+
+    document.getElementById('payForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('payError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      try {
+        const result = await withBusy(submitBtn, () => apiFetch(`/invoices/${payingInvoiceId}/mark-paid`, { method: 'POST', body: JSON.stringify(payload) }));
+        document.getElementById('payModal').classList.remove('open');
+        e.target.reset();
+        if (result.warning) alert(result.warning);
+        loadInvoices();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('invoiceForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('formError');
+      errorEl.textContent = '';
+      const form = new FormData(e.target);
+      const payload = Object.fromEntries(form.entries());
+      if (!payload.plan) delete payload.plan;
+      if (payload.amount) payload.amount = parseFloat(payload.amount);
+      else delete payload.amount;
+      if (!payload.due_date) delete payload.due_date;
+      const submitBtn = document.getElementById('submitBtn');
+      try {
+        await withBusy(submitBtn, () => apiFetch('/invoices', { method: 'POST', body: JSON.stringify(payload) }));
+        loadInvoices();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    requireAdminSession()
+      .then(() => loadOptions().then(loadInvoices))
+      .catch(err => console.error(err));
+  </script>
+</body>
+</html>
